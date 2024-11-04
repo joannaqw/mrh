@@ -119,7 +119,7 @@ def _ddm (dm1frs0, dm1frs1):
     return np.concatenate ([(d1 - d0).ravel () for d1, d0 in zip (dm1frs0, dm1frs1)])
 
     
-def rdm_cycle (las, mo_coeff, casdm1frs, veff, h2eff_sub, log, max_cycle_rdmjk=3, conv_tol_rdmjkddm=3e-4,conv_tol_rdmjkde=1e-8):
+def rdm_cycle (las, mo_coeff, casdm1frs, veff, h2eff_sub, log, max_cycle_rdmjk=1, conv_tol_rdmjkddm=3e-4,conv_tol_rdmjkde=1e-8):
         ''' "fcibox.kernel" should return e_cas, (casdm1rs, casdm2r) '''
         def get_veff (my_casdm1frs):
             casdm1fs = las.make_casdm1s_sub (casdm1frs=my_casdm1frs)
@@ -218,6 +218,9 @@ def kernel (las, mo_coeff=None, casdm1frs=None, casdm2fr=None, conv_tol_grad=1e-
         casdm1fs = casdm1fs_new
 
         t1 = log.timer ('LASSCF get_veff after ci', *t1)
+        if casdm2fr==None:
+            print('found casdm2fr none')
+            return None,None,None,None,None,None,None,None,None,None
         H_op = las.get_hop (ugg=ugg, mo_coeff=mo_coeff, casdm1frs=casdm1frs,
             casdm2fr=casdm2fr, h2eff_sub=h2eff_sub, veff=veff, do_init_eri=False)
         g_vec = H_op.get_grad ()
@@ -230,10 +233,10 @@ def kernel (las, mo_coeff=None, casdm1frs=None, casdm2fr=None, conv_tol_grad=1e-
         norm_xorb = linalg.norm (x0) if x0.size else 0.0
         lib.logger.info (las, 'LASSCF macro %d : E = %.15g ; |g_int| = %.15g ; |g_x| = %.15g',
             it, H_op.e_tot, norm_gorb, norm_gx)
-        if ((norm_gorb < conv_tol_grad) or (norm_gorb < norm_gx/10)) and rdmjk_conv:
+        if ((norm_gorb < conv_tol_grad) or (norm_gorb < norm_gx/10)): #and rdmjk_conv:
             converged = True
             break
-        las.dump_chk (mo_coeff=mo_coeff, ci=[casdm1frs, casdm2fr])
+        #las.dump_chk (mo_coeff=mo_coeff, ci=[casdm1frs, casdm2fr])
         H_op._init_eri_() # Take this part out of the true initialization b/c 
                           # if I'm already converged I don't want to waste the cycles
         t1 = log.timer ('LASSCF Hessian constructor', *t1)
@@ -275,13 +278,15 @@ def kernel (las, mo_coeff=None, casdm1frs=None, casdm2fr=None, conv_tol_grad=1e-
                                             callback=my_callback, M=prec_op)
             t1 = log.timer ('LASSCF {} microcycles'.format (microit[0]), *t1)
             mo_coeff, h2eff_sub = H_op.update_mo_eri (x, h2eff_sub)
+            
             #------edit: #here I save the most recent orbitals------##
             output_dir = "../orbital"
             file_path = os.path.join(output_dir, 'guessOrb.h5')
             with h5py.File(file_path, 'w') as f:
                  f.create_dataset('guessOrb', data=mo_coeff)
-                 print("saved the previous orbs")
+                 print("saved the previous orbs,inside try")
             #-------------------------------------------------------##     
+        
             t1 = log.timer ('LASSCF Hessian update', *t1)
 
             veff = las.get_veff (dm1s = las.make_rdm1 (mo_coeff=mo_coeff, casdm1s_sub=casdm1fs))
@@ -330,13 +335,11 @@ def kernel (las, mo_coeff=None, casdm1frs=None, casdm2fr=None, conv_tol_grad=1e-
     lib.logger.info (las, 'LASSCF %s after %d cycles', ('not converged', 'converged')[converged], it+1)
     lib.logger.info (las, 'LASSCF E = %.15g ; |g_int| = %.15g ; |g_ext| = %.15g', e_tot, norm_gorb, norm_gx)
     t1 = log.timer ('LASSCF wrap-up', *t1)
-
     mo_coeff, mo_energy, mo_occ, casdm1frs, casdm2fr, h2eff_sub = las.canonicalize (
         mo_coeff, casdm1frs, casdm2fr, veff=veff.sa, h2eff_sub=h2eff_sub)
     t1 = log.timer ('LASSCF canonicalization', *t1)
 
     t0 = log.timer ('LASSCF kernel function', *t0)
-
     return converged, e_tot, e_states, mo_energy, mo_coeff, e_cas, casdm1frs, casdm2fr, h2eff_sub, veff
 
 def canonicalize (las, mo_coeff=None, casdm1frs=None, casdm2fr=None, natorb_casdm1=None,
@@ -501,7 +504,11 @@ class LASSCFNoSymm (lasscf_sync_o0.LASSCFNoSymm):
     _combine_init_guess_ci = _combine_init_guess_ci
 
     def _init_fcibox (self, smult, nel):
+<<<<<<< Updated upstream
         return make_fcibox (self.mol, spin=nel[0]-nel[1], smult=smult)
+=======
+        return make_fcibox (self.mol, spin=nel[0]-nel[1])#,smult=smult)
+>>>>>>> Stashed changes
 
     def kernel(self, mo_coeff=None, casdm1frs=None, casdm2fr=None, conv_tol_grad=None, verbose=None):
         if mo_coeff is None:
@@ -541,7 +548,7 @@ class extremeAsynLASSCF (LASSCFNoSymm):
             my_veff = self.get_veff (dm1s=self.make_rdm1 (mo_coeff=mo_coeff, casdm1s_sub=casdm1fs))
             my_veff = self.split_veff (my_veff, h2eff_sub, mo_coeff=mo_coeff, casdm1s_sub=casdm1fs)
             return my_veff
-        #------edit:read in the previously saved rdm from SQSD-----#
+        #------edit:read in the previously saved rdm and orbs from SQSD-----#
         if os.path.exists("../RDMS"):
              with h5py.File("../RDMS/casdm1frs.h5", 'r') as f:
                 datagroup= f['casdm1frs']
@@ -553,11 +560,22 @@ class extremeAsynLASSCF (LASSCFNoSymm):
                 print("read in the previous rdm")
         else:
             casdm1frs = casdm1frs
+        '''
+        if os.path.exists("../orbital"):
+           with h5py.File("../orbital/guessOrb.h5", 'r') as f:
+               mo_coeff = f['guessOrb'][:]
+               print("read the previous orbital") 
+        '''
         #----------------------------------------------------------#
         converged = False ######not sure how to deal with the ci_cycle, but re-write below
         e_cas, fakeci = self.ci_cycle (mo_coeff, None, veff, h2eff_sub, casdm1frs, log)
         casdm1frs = [f[0] for f in fakeci]
         casdm2fr = [f[1] for f in fakeci]
+        #---check for None, if finds, return None----
+        if any(all(element is None for element in arr) for arr in casdm1frs):
+            print('found none item')
+            return None,None,None,None
+        
         veff = get_veff (casdm1frs)
         e_tot = self.energy_nuc () + self.energy_elec (mo_coeff=mo_coeff, h2eff=h2eff_sub,
                                                  casdm1frs=casdm1frs, casdm2fr=casdm2fr)
